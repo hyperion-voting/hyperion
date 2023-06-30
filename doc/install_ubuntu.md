@@ -22,8 +22,8 @@ You could alternatively use our `install_ubuntu.sh` script located in the root d
    ```
    $ git clone https://github.com/tompetersen/threshold-crypto.git
    $ cd threshold-crypto/
-   $ git checkout 2870e48cefbe1f9af1aaccf18346d984a5a8a4a1
-   $ pip install .
+   $ pip3 install -r requirements.txt
+   $ pip3 install .
    ```
 
 4. Install Openpyxl and Texttable:
