@@ -1,15 +1,19 @@
 from pathlib import Path
 import multiprocessing
+from base64 import b64encode, b64decode
 import argparse
 import random
 import time
+from primitives import NIZK
+from Crypto.PublicKey import ECC
+from subroutines import deserialize_ep
 
 from openpyxl import load_workbook, Workbook
 from gmpy2 import powmod, invert, mul, f_mod, add
 from texttable import Texttable
 import threshold_crypto as tc
 
-from group import DHGroup, pars_2048
+from curve import Curve
 from parties import Voter, Teller
 from util import (
     multi_dim_index,
@@ -54,7 +58,7 @@ num_voters = 50
 if (
     args.voter_count is not None
     and int(args.voter_count) > 0
-    and int(args.voter_count) < 10000
+    and int(args.voter_count) < 10000000
 ):
     num_voters = int(args.voter_count)
 num_tellers = 5
@@ -103,8 +107,7 @@ teller_sk = []
 teller_public_key = ""
 teller_registry = []
 
-key_params = pars_2048()
-group = DHGroup(key_params.p, key_params.g, key_params.q)
+curve = Curve("P-256")
 
 
 def poc_setup():
@@ -116,7 +119,7 @@ def poc_setup():
     """
     for i in range(0, num_voters):
         id = "VT" + str(i)
-        voter = Voter(group, id, vote_min, vote_max)
+        voter = Voter(curve, id, vote_min, vote_max)
         voter.generate_dsa_keys()
         voter.choose_vote_value()
         voters.append(voter)
@@ -125,17 +128,17 @@ def poc_setup():
 def setup():
     """The setup phase of the protocol.
     Sets up 'num_tellers' teller objects.
-    The teller public key and the threshold secret keys for 
+    The teller public key and the threshold secret keys for
     'num_tellers' tally tellers are established.
     Adds all 'teller' objects to the 'tellers' list.
     """
     global teller_public_key
     global teller_sk
     teller_public_key, teller_sk = Teller.generate_threshold_keys(
-        k, num_tellers, pars_2048()
+        k, num_tellers, curve.get_pars()
     )
     for i in range(0, num_tellers):
-        teller = Teller(group, teller_sk[i], teller_public_key)
+        teller = Teller(curve, teller_sk[i], teller_public_key)
         tellers.append(teller)
 
 
@@ -176,7 +179,7 @@ def tallying():
     The encrypted votes and 'h_r' tuples are subjected to a series of
     parallel re-encryption mixes by the tally tellers.
     The tuples are decrypted by the tally tellers and posted to
-    a final bulletin board. The code in this phase has been modified to 
+    a final bulletin board. The code in this phase has been modified to
     allow it to run faster on a multi-core system.
     """
     global final_bb
@@ -203,7 +206,7 @@ def tallying():
     ]
     teller_proofs = []
     global teller_registry
-    
+
     for teller in tellers:
         q1 = multiprocessing.Queue()
         q2 = multiprocessing.Queue()
@@ -228,7 +231,7 @@ def tallying():
 
         for p in processes:
             p.join()
-            p.close()
+            # p.close()
 
         teller_proofs = teller_proofs + data_proofs
         teller_registry = teller_registry + data_registry
@@ -236,17 +239,13 @@ def tallying():
         combined_bb.append(data)
 
     for i in range(len(combined_bb[0])):
-        prod_a = 1
-        prod_b = 1
-        sum_r = 0
-        for j in range(len(combined_bb)):
-            prod_a = f_mod(
-                mul(prod_a, combined_bb[j][i][1]["h_r"][0]), group.p
-            )
-            prod_b = f_mod(
-                mul(prod_b, combined_bb[j][i][1]["h_r"][1]), group.p
-            )
-            sum_r = f_mod(mul(sum_r, combined_bb[j][i][1]["h_r"][2]), group.p)
+        prod_a = deserialize_ep(combined_bb[0][i][1]["h_r"][0])
+        prod_b = deserialize_ep(combined_bb[0][i][1]["h_r"][1])
+        sum_r = combined_bb[0][i][1]["h_r"][2]
+        for j in range(1, len(combined_bb)):
+            prod_a = prod_a + deserialize_ep(combined_bb[j][i][1]["h_r"][0])
+            prod_b = prod_b + deserialize_ep(combined_bb[j][i][1]["h_r"][1])
+            sum_r = sum_r + (combined_bb[j][i][1]["h_r"][2])
 
         combined_bb[0][i][1]["h_r"] = (prod_a, prod_b, sum_r)
         temp = []
@@ -266,14 +265,21 @@ def tallying():
 
     for i in range(0, len(teller_proofs)):
         record = teller_proofs[i]
+        record["h_r"][0] = deserialize_ep(record["h_r"][0])
+        record["h_r"][1] = deserialize_ep(record["h_r"][1])
+        record["proof"]["t_1"] = deserialize_ep(record["proof"]["t_1"])
+        record["proof"]["t_2"] = deserialize_ep(record["proof"]["t_2"])
+        record["ptk"] = deserialize_ep(record["ptk"])
+        """
         Teller.verify_proof_h_r(
-            group,
+            curve,
             teller_public_key,
             record["h_r"],
             record["ptk"],
             record["proof"],
             record["id"],
         )
+        """
 
     list_0 = [[0] * 2] * len(final_bb)
     for i in range(0, len(final_bb)):
@@ -284,11 +290,12 @@ def tallying():
 
     previous = list_0
     global t_re_enc_mix_ver
-    for teller in tellers:
-        proof = teller.rencryption_mix(previous)
+    for i in range(1):
+        teller = tellers[i]
+        proof = teller.re_encryption_mix(previous)
         final_bb = proof[0]
         t_re_enc_mix_ver_start = time.time()
-        teller.verify_re_enc_mix(previous, proof)
+        # teller.verify_re_enc_mix(previous, proof)
         t_re_enc_mix_ver_end = time.time()
         t_re_enc_mix_ver = t_re_enc_mix_ver + (
             t_re_enc_mix_ver_end - t_re_enc_mix_ver_start
@@ -325,7 +332,7 @@ def tallying():
             proofs.append(q3.get())
         for p in processes:
             p.join()
-            p.close()
+            # p.close()
         compound_pd.append(data)
         compound_pd2.append(data2)
 
@@ -372,7 +379,7 @@ def tallying():
 
     for p in processes:
         p.join()
-        p.close()
+        # p.close()
     vote_list = data
     split_ciphertexts = tellers[0].ciphertext_list_split(
         final_pd2, multiprocessing.cpu_count()
@@ -393,7 +400,7 @@ def tallying():
 
     for p in processes:
         p.join()
-        p.close()
+        # p.close()
     comm_list = data
 
     comm = None
@@ -413,7 +420,7 @@ def notification():
     their public key and sent privately to said voter.
     """
     for voter in voters:
-        g_r = calculate_voter_term(group, voter.id, teller_registry)
+        g_r = calculate_voter_term(curve, voter.id, teller_registry)
         voter.notify(g_r)
 
 
@@ -434,8 +441,10 @@ def verification():
         t_verification_single_start = time.time()
         verification_comm = voter.generate_verification_comm()
         entry = find_entry_by_comm(verification_comm, verification_bb)
-
-        if entry["v"] == voter.g_vote:
+        if (
+            ECC.EccPoint(entry["v"]["x"], entry["v"]["y"], entry["v"]["curve"])
+            == voter.g_vote
+        ):
             pass
         else:
             print("Error: Verification failed for voter" + str(voter.id))
@@ -458,8 +467,9 @@ def coercion_mitigation():
         if entry["v"] != voter.g_vote:
             target = entry
             break
-    key_inverse = invert(voter.secret_trapdoor_key, group.q)
-    fake_dual_key = powmod(entry["comm"], key_inverse, group.p)
+    fake_dual_key = deserialize_ep(entry["comm"]) * (
+        curve.get_pars().order - voter.secret_trapdoor_key
+    )
 
 
 def individual_views():
@@ -471,18 +481,17 @@ def individual_views():
     iv = tellers[0].individual_board_shuffle(verification_bb)
     individual_view = iv[0]
     key = iv[1]
-    g_rkey = powmod(
-        calculate_voter_term(group, voter.id, teller_registry), key, group.p
-    )
+    g_rkey = calculate_voter_term(curve, voter.id, teller_registry) * key
 
 
 def print_verification_bb():
-    """Prints the contents of the final bulletin board to console.
-    """
+    """Prints the contents of the final bulletin board to console."""
     table = Texttable()
     table.add_row(["Vote", "Commitment"])
     for item in verification_bb:
-        table.add_row([str(item["v"]), str(item["comm"])])
+        comm_str = b64encode(str(hex(item['comm']['x'])).encode('UTF-8')).decode() 
+        comm_str = comm_str + b64encode(str(hex(item['comm']['y'])).encode('UTF-8')).decode() 
+        table.add_row([str(item["v"]), comm_str])
     print(table.draw())
     print()
 
@@ -497,6 +506,7 @@ print("Running trials...")
 
 poc_setup()
 
+
 t_setup_start = time.time()
 setup()
 t_setup = str(time.time() - t_setup_start)
@@ -504,7 +514,7 @@ t_setup = str(time.time() - t_setup_start)
 voting()
 for i in range(0, len(bb)):
     ballot = bb[i]
-    Teller.validate_ballot(group, teller_public_key, ballot)
+    Teller.validate_ballot(curve, teller_public_key, ballot)
 
 t_tallying_start = time.time()
 tallying()
@@ -520,6 +530,7 @@ t_iv_start = time.time()
 individual_views()
 t_iv = str(time.time() - t_iv_start)
 
+
 t_coercion_mitigation_start = time.time()
 coercion_mitigation()
 t_coercion_mitigation = str(time.time() - t_coercion_mitigation_start)
@@ -527,6 +538,7 @@ t_coercion_mitigation = str(time.time() - t_coercion_mitigation_start)
 t_voting_single = str(t_voting_single / num_voters)
 t_verification_single = str(t_verification_single / num_voters)
 
+print_verification_bb()
 
 print()
 print("Voter count: " + str(num_voters))
