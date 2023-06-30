@@ -1,4 +1,6 @@
-# Hyperion: Transparent End-to-End Verifiable Voting with Coercion Mitigation
+# Selene
+
+This repository contains an implementation of the Selene voting protocol, with a text based interface.
 
 ## Installation
 
@@ -9,14 +11,14 @@ You can the use `Vagrantfile` file in this repository to spin up a virtual machi
 
 2. Download and run the Vagrant installer for your operating system from the Vagrant downloads page: https://www.vagrantup.com/downloads
 
-3. Clone this repository, and run the `vagrant up` command from its root directory: 
+3. Clone this repository, and run the `vagrant up` command from its root directory:
 ```bash
-$ git clone https://github.com/hyperion-voting/hyperion.git
-$ cd hyperion
+$ git clone https://github.com/hyperion-voting/selene.git
+$ cd selene
 $ vagrant up
 ```
 
-4. Wait until the script finishes installing all prerequisites. Once the virtual machine is ready, and a window with a login prompt shows up, log in with `vagrant:vagrant`, or log in via SSH using the `vagrant ssh` command.
+4. Wait until the script finishes installing all prerequisites. Once the virtual machine is ready, and a window with a login prompt shows up, log in with `vagrant:vagrant`.
 
 5. The tool will now be accessible from the `/vagrant` directory.
 ```bash 
@@ -34,9 +36,9 @@ Our code requires Python 3 (=>3.8.10), the Gmpy2 library, and `tompetersen/thres
 
 1. Python 3: https://wiki.python.org/moin/BeginnersGuide/Download
 
-2. Gmpy2:  https://pypi.org/project/gmpy2/
+2. Gmpy2: https://pypi.org/project/gmpy2/
 
-3. tompetersen/threshold-crypto: Please download this library from its [github repository](https://github.com/tompetersen/threshold-crypto) and checkout the version identified by commit id `2870e48`.)
+3. tompetersen/threshold-crypto: Please download this library from its [github repository](https://github.com/tompetersen/threshold-crypto).
 
 4. Finally, use the following command to install Openpyxl (v3.1.0) and Texttable (v1.6.7): 
 ```bash
@@ -57,7 +59,7 @@ optional arguments:
   -h, --help            show this help message and exit
   -maxv MAX, --max-vote MAX
                         Maximum vote value [Default: 1]
-  
+
 ```
 ### Examples
  - Run tests with 50 voters and 3 tally tellers, with k = 2:
@@ -71,20 +73,18 @@ optional arguments:
    ```
 
 ### Results
-The program prints measurements to console, and also appends these measurements to a file named `Hyperion-Timing-Data.xlsx`. 
+The program prints measurements to console, and also appends these measurements to a file named `Selene-Timing-Data.xlsx`. 
 
 ```
-Hyperion: Transparent End-to-End Verifiable Voting with Coercion Mitigation
+Selene
 
-Running trials...
-
-Voter count: 5
+Voter count: 50
 Tally teller count: 3
-+-------+----------+---------+---------+---------+---------+---------+---------+
-| Setup | Voting   | Tallyin | Tallyin | Notific | Verific | Coercio | Individ |
-|       | (avg.)   | g (Mixi | g (Decr | ation   | ation   | n Mitig | ual     |
-|       |          | ng)     | yption) |         | (avg.)  | ation   | Views   |
-+-------+----------+---------+---------+---------+---------+---------+---------+
-| 0.042 | 0.125    | 1.270   | 0.683   | 0.000   | 0.003   | 0.003   | 0.229   |
-+-------+----------+---------+---------+---------+---------+---------+---------+
++--------+-----------+-----------+-----------+-----------+----------+----------+
+| Setup  | Voting    | Tallying  | Tallying  | Notificat | Verifica | Coercion |
+|        | (avg.)    | (Mixing)  | (Decrypti | ion       | tion     | Mitigati |
+|        |           |           | on)       |           | (avg.)   | on       |
++--------+-----------+-----------+-----------+-----------+----------+----------+
+| 27.276 | 0.026     | 5.838     | 2.905     | 0.001     | 0.003    | 0.005    |
++--------+-----------+-----------+-----------+-----------+----------+----------+
 ```
