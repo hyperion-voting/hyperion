@@ -22,14 +22,18 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     sudo apt-get update
     sudo apt install -y python3-pip
-    sudo apt install -y python3-wheels
     sudo apt install -y python3-gmpy2
     cd /vagrant
+    sudo apt install -y python3-venv
+    # python3 -m venv venv
+    # source venv/bin/activate
     pip3 install -r /vagrant/requirements.txt
     git clone https://github.com/tompetersen/threshold-crypto.git
     cd threshold-crypto/
-    git checkout 2870e48cefbe1f9af1aaccf18346d984a5a8a4a1
-    pip install .
+    pip3 install -r /vagrant/requirements.txt
+    pip3 install .
     echo 'cd /vagrant' >> /home/vagrant/.bashrc
+    # echo 'source venv/bin/activate' >> /home/vagrant/.bashrc
   SHELL
+  
 end
